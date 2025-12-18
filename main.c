@@ -48,10 +48,15 @@ int main() {
   ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
   exePath[len] = '\0';   // null-terminate
 
-  // strip filename → get directory
+  // mount
   if (mount(NULL, "/", NULL, MS_REMOUNT, NULL) < 0) {
     perror("remount / rw");
   }
+  mount("proc", "/proc", "proc", MS_REMOUNT, NULL);
+  mount("sysfs", "/sys", "sysfs", MS_REMOUNT, NULL);
+  mount("devtmpfs", "/dev", "devtmpfs", MS_REMOUNT, NULL);
+
+  // get cwd
   system("clear");
   char *lastSlash = strrchr(exePath, '/');
   if (lastSlash) {
@@ -59,6 +64,8 @@ int main() {
     chdir(exePath);
     printf("[termOS] Working directory: %s\n", exePath);
   }
+
+  // init messages
   putsc("**red test**\n", 255, 0, 0);
   putsc("**green test**\n", 0, 255, 0);
   putsc("**blue test**\n", 0, 0, 255);
@@ -68,54 +75,49 @@ int main() {
   puts("|term|=|inal|");
   puts(" \\ O/   \\S /");
   puts("  \\/--=--\\/");
-  puts("\nA Linux Subsystem\n");
+  puts("\nA minimal Linux Distribution\n");
 
-  struct sigaction sa;
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_handler = sigchld_handler;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+  // run shell
+  pid_t pid = fork();
+  if (pid == 0) {
+    execl("./sh", "./sh", NULL);
+    perror("exec sh failed");
+    _exit(1);
+  }
+  waitpid(pid, NULL, 0);
 
-  if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-    perror("sigaction");
-    exit(1);
+  setup_terminal();
+
+  // signals
+  signal(SIGCHLD, sigchld_handler);
+  signal(SIGINT, SIG_IGN);
+  signal(SIGTERM, SIG_IGN);
+  signal(SIGHUP, SIG_IGN);
+
+  // wait.
+  while (1) {
+    pid_t pid = fork();
+
+    if (pid == 0) {
+      execl("./sh", "sh", NULL);
+      perror("exec sh failed");
+      _exit(1);
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+
+    if (WIFEXITED(status)) {
+      int code = WEXITSTATUS(status);
+      printf("sh exited with code %d\n", code);
+
+      if (code == 42) {  // your "restart" code
+        break;
+      }
+    }
   }
   
-  char buf[256] = {0};
-
-  while (1) {
-    printf("termOS> ");
-    fflush(stdout);
-    
-    if (!fgets(buf, sizeof(buf), stdin)) {
-      puts("\nEOF, rebooting");
-      break;
-    }
-
-    buf[strcspn(buf, "\n")] = 0;
-
-    char *command = strtok(buf, " ");
-    char *arg1 = strtok(NULL, " ");
-    char *arg2 = strtok(NULL, " ");
-
-    if (!command) {puts("Empty"); continue;}
-
-    if (!strcmp(command, "exit")) {
-      break;
-    } else if (!strcmp(command, "q")) {
-      break;
-    } else if (!strcmp(command, "quit")) {
-      break;
-    } else if (!strcmp(command, "exsb")) {
-      char execPath[512] = {0};
-      snprintf(execPath, sizeof(execPath) - sizeof(char), "./sbin/%s", arg1);
-      system(execPath);
-    } else if (!strcmp(command, "rand")) {
-      
-    }
-  }
-
-  restore_terminal();
   reboot(LINUX_REBOOT_CMD_RESTART);
+
   while (1) {}
 }
