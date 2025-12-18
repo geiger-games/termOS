@@ -112,7 +112,7 @@ int main() {
         getcpac(arg2);
       } else if (!strcmp(arg1, "run")) {
         char execPath[512] = {0};
-        snprintf(execPath, sizeof(execPath) - sizeof(char), "./cpacs/%s", arg1);
+        snprintf(execPath, sizeof(execPath) - sizeof(char), "./cpacs/%s", arg2);
         system(execPath);
       }
     }
